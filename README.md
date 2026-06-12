@@ -95,6 +95,17 @@ Clique em **Authorize** (cadeado no topo) → cole o token → **Authorize**.
 | GET | `/api/Users/{id}` | Buscar usuário por ID |
 | DELETE | `/api/Users/{id}` | Remover usuário |
 
+### Produtos
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| POST | `/api/Products` | Criar produto |
+| GET | `/api/Products/{id}` | Buscar produto por ID |
+| GET | `/api/Products` | Listar produtos (paginado) |
+| PUT | `/api/Products/{id}` | Atualizar produto |
+| DELETE | `/api/Products/{id}` | Remover produto |
+| GET | `/api/Products/categories` | Listar categorias disponíveis |
+
 ### Vendas
 
 | Método | Rota | Descrição |
@@ -108,6 +119,16 @@ Clique em **Authorize** (cadeado no topo) → cole o token → **Authorize**.
 | POST | `/api/Sales/resync-read-model` | Reprojetar todas as vendas do PostgreSQL no MongoDB |
 
 > O `GET /api/Sales` lê do MongoDB (read model). Se o MongoDB estiver vazio ou desatualizado, use `POST /api/Sales/resync-read-model` para sincronizar.
+
+### Carrinhos
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| POST | `/api/Carts` | Criar carrinho |
+| GET | `/api/Carts/{id}` | Buscar carrinho por ID |
+| GET | `/api/Carts` | Listar carrinhos (paginado) |
+| PUT | `/api/Carts/{id}` | Atualizar carrinho |
+| DELETE | `/api/Carts/{id}` | Remover carrinho |
 
 ---
 
@@ -142,12 +163,76 @@ Clique em **Authorize** (cadeado no topo) → cole o token → **Authorize**.
 | Menos de 4 | Sem desconto |
 | 4 a 9 | 10% |
 | 10 a 20 | 20% |
-| Mais de 20 | Não permitido |
+| Mais de 20 | Não permitido (400 Bad Request) |
+
+---
+
+## Arquitetura
+
+```
+HTTP Request
+    └─► WebApi (Controllers)
+            └─► MediatR (Commands/Queries)
+                    └─► Application (Handlers)
+                            ├─► Domain (Entities, Rules, Events)
+                            ├─► ORM (PostgreSQL via EF Core)
+                            │       └─► OutboxMessages (evento salvo atomicamente)
+                            └─► OutboxProcessor (BackgroundService)
+                                    └─► RabbitMQ (Rebus)
+                                            └─► EventHandlers
+                                                    └─► MongoDB (Read Models)
+```
+
+- **PostgreSQL** — fonte de verdade (write side): Users, Sales, SaleItems, Products, Carts
+- **MongoDB** — read model (leitura de vendas via `GET /api/Sales`): projetado pelo `SaleCreatedEventHandler`
+- **Redis** — cache de produtos (TTL 5 min)
+- **RabbitMQ** — transporte de eventos de domínio via Rebus
+- **Outbox Pattern** — evento é salvo no PostgreSQL na mesma transação da venda; o `OutboxProcessor` publica no RabbitMQ a cada 5s, garantindo entrega sem perda mesmo com falha de rede
 
 ---
 
 ## Executando os testes
 
+### Todos os testes (exceto E2E)
+
 ```bash
+dotnet test --filter "Category!=E2E"
+```
+
+### Suite completa com E2E (requer Docker)
+
+```bash
+# 1. Suba os containers primeiro
+docker-compose up ambev.developerevaluation.database ambev.developerevaluation.nosql ambev.developerevaluation.cache ambev.developerevaluation.messagebroker -d
+
+# 2. Execute todos os testes
 dotnet test
+```
+
+---
+
+## Suites de teste
+
+| Suite | Projeto | Quantidade | O que testa |
+|-------|---------|-----------|-------------|
+| **Unit** | `Ambev.DeveloperEvaluation.Unit` | 123 | Regras de domínio (Sale, SaleItem, User), handlers da Application, especificações, validadores — sem I/O |
+| **Integration** | `Ambev.DeveloperEvaluation.Integration` | 45 | Repositórios contra PostgreSQL real (via Docker) — mapeamentos EF, queries, transações |
+| **Functional** | `Ambev.DeveloperEvaluation.Functional` | 26 | API completa via `WebApplicationFactory` com banco real — autenticação, status HTTP, body das respostas |
+| **E2E** | `Ambev.DeveloperEvaluation.E2E` | 3 | Fluxo assíncrono completo: HTTP → PostgreSQL → OutboxProcessor → RabbitMQ → EventHandler → MongoDB |
+
+### O que cada suite pega que a anterior não pega
+
+- **Unit** não detecta: mapeamentos EF incorretos, connection strings erradas, queries lentas
+- **Integration** não detecta: endpoints HTTP com status errado, middlewares de autenticação, serialização JSON
+- **Functional** não detecta: eventos de domínio não chegando ao MongoDB, OutboxProcessor falhando silenciosamente
+- **E2E** detecta: `SaleCreatedEvent` sem itens (Items = []), `OutboxProcessor` com coluna faltando no banco, handler não projetando campos corretos no MongoDB, roteamento RabbitMQ incorreto
+
+### Cobertura de relatório
+
+```bash
+# Windows
+coverage-report.bat
+
+# Linux/Mac
+./coverage-report.sh
 ```
