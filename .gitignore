@@ -126,6 +126,13 @@ ipch/
 
 # Visual Studio Trace Files
 *.e2e
+# Un-ignore the E2E test project (its folder name ends with .E2E but is not a trace file)
+!tests/Ambev.DeveloperEvaluation.E2E/
+!tests/Ambev.DeveloperEvaluation.E2E/*.csproj
+!tests/Ambev.DeveloperEvaluation.E2E/Infrastructure/
+!tests/Ambev.DeveloperEvaluation.E2E/Infrastructure/*.cs
+!tests/Ambev.DeveloperEvaluation.E2E/Sales/
+!tests/Ambev.DeveloperEvaluation.E2E/Sales/*.cs
 
 # TFS 2012 Local Workspace
 $tf/
