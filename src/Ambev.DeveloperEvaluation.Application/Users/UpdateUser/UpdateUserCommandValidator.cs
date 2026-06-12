@@ -14,7 +14,7 @@ public class UpdateUserCommandValidator : AbstractValidator<UpdateUserCommand>
         RuleFor(u => u.Id).NotEmpty();
         RuleFor(u => u.Email).SetValidator(new EmailValidator());
         RuleFor(u => u.Username).NotEmpty().Length(3, 50);
-        RuleFor(u => u.Password).SetValidator(new PasswordValidator());
+        RuleFor(u => u.Password).SetValidator(new PasswordValidator()).WithName("Password");
         RuleFor(u => u.Phone).Matches(@"^\+?[1-9]\d{1,14}$");
         RuleFor(u => u.Status).NotEqual(UserStatus.Unknown);
         RuleFor(u => u.Role).NotEqual(UserRole.None);
