@@ -1,0 +1,14 @@
+namespace Ambev.DeveloperEvaluation.Domain.Common;
+
+public class BaseEntity : IComparable<BaseEntity>
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    public int CompareTo(BaseEntity? other)
+    {
+        if (other == null)
+            return 1;
+
+        return other!.Id.CompareTo(Id);
+    }
+}
